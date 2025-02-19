@@ -39,7 +39,6 @@ class GObj:
         self.wander_rate = 0.3
         self.last_speed = 0
         self.last_direction = 0
-        self.chase = 0
 
     def orientation(self):
         ox = math.cos(self.heading)
@@ -322,26 +321,23 @@ class EnemyYellow(Enemy):
 
     def ai(self, percept, goals, comms):
         speed = self.orientation_vector()
-        direction = self.wander()
         if self.ticks > 0:
             self.ticks -= 1
-            if self.chase and self.ticks == 0 and percept[0]:
-                self.chase = 0
-                self.target = vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+            direction = self.seek(self.target)
+            return (direction, speed, None)
         elif self.ticks == 0 and percept[0]:
             print("Chasing")
-            self.ticks = 60 * 4
-            self.chase = 0
+            self.ticks = 5
             player_x = self.x + percept[1][0] * percept[2]
             player_y = self.y + percept[1][1] * percept[2]
             print(f"Player Coords: {player_x}, {player_y}")
-            direction = self.seek(vec(player_x, player_y))
-            return (direction, speed, ("Don't make me chase you!", 2000))
-        if self.chase:
+            self.target = vec(player_x, player_y)
             direction = self.seek(self.target)
-        else:
-            direction = self.wander()
-        return (direction, 0, None)
+            return (direction, speed, ("Don't make me chase you!", 2000))
+
+        direction = self.wander()
+        print("wamdering")
+        return (0, 0, None)
 
 
 class EnemyBlue(Enemy):
