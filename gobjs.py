@@ -2,8 +2,17 @@ import math
 import random
 import pygame
 
+vec = pygame.math.Vector2
+WIDTH = 800
+HEIGHT = 600
+
+
+def randomBinomial() -> float:
+    return random.random() - random.random()
+
 
 class GObj:
+
     def __init__(
         self,
         x,
@@ -25,6 +34,21 @@ class GObj:
         self.sight_distance = sight_distance
         self.color = color
         self.fill = fill
+        self.target = vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+        self.last_target = 0
+        self.wander_rate = 0.3
+        self.last_speed = 0
+        self.last_direction = 0
+        self.chase = 0
+
+    def orientation(self):
+        ox = math.cos(self.heading)
+        oy = math.sin(self.heading)
+        return ox, oy
+
+    def orientation_vector(self):
+        ox, oy = self.orientation()
+        return math.sqrt(ox**2 + oy**2)
 
     def pos(self):
         return (self.x, self.y)
@@ -226,6 +250,22 @@ class Enemy(GObj):
 
         return (0.0, 0.0, None)
 
+    def seek(self, target: vec):
+        self.desired = (target - vec(self.pos())).normalize()
+        target_angle = math.atan2(self.desired.y, self.desired.x)
+        angle = target_angle - self.heading
+        if abs(angle) > self.wander_rate:
+            angle = math.copysign(self.wander_rate, angle)
+
+        return angle
+
+    def wander(self):
+        tick_count = pygame.time.get_ticks()
+        if tick_count - self.last_target > 500:
+            self.target = vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+            self.last_target = tick_count
+        return self.seek(self.target)
+
 
 class EnemyYellow(Enemy):
     def __init__(
@@ -233,7 +273,7 @@ class EnemyYellow(Enemy):
         x,
         y,
         radius=10,
-        speed=90,
+        speed=40,
         turn_rate=3.0,
         heading=0.0,
         sight_distance=120,
@@ -256,14 +296,52 @@ class EnemyYellow(Enemy):
         )
         self.ticks = 0
 
-    # This is ai routine for the type A enemy.
+    # # This is ai routine for the type A enemy.
+    # def ai(self, percept, goals, comms):
+    #     # direction = randomBinomial() * self.turn_rate
+    #     speed = self.orientation_vector()
+    #     print(self.heading)
+    #     # turn, speed = self.wander()
+    #     if self.ticks > 0:
+    #         self.ticks -= 1
+    #     elif self.ticks == 0 and percept[0]:
+    #         print("Chasing")
+    #         self.ticks = 60 * 4
+    #         player_x = self.x + percept[1][0] * percept[2]
+    #         player_y = self.y + percept[1][1] * percept[2]
+    #         self.last_direction = self.seek(vec(player_x, player_y))
+    #         self.target = vec(player_x, player_y)
+    #         print(f"Percept0: {percept[0]}")
+    #         print(f"Percept1: {percept[1]}")
+    #         print(f"Percept2: {percept[2]}")
+    #         print(f"Player coords: {player_x}, {player_y}")
+    #         print(f"Self Coords: {self.x}, {self.y}")
+    #         return (self.last_direction, speed, ("Don't make me chase you!", 2000))
+    #     # direction = self.wander()
+    #     return (self, 0, None)
+
     def ai(self, percept, goals, comms):
+        speed = self.orientation_vector()
+        direction = self.wander()
         if self.ticks > 0:
             self.ticks -= 1
+            if self.chase and self.ticks == 0 and percept[0]:
+                self.chase = 0
+                self.target = vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
         elif self.ticks == 0 and percept[0]:
+            print("Chasing")
             self.ticks = 60 * 4
-            return (0.0, 0.0, ("Don't make me chase you!", 2000))
-        return (0.0, 0.0, None)
+            self.chase = 0
+            player_x = self.x + percept[1][0] * percept[2]
+            player_y = self.y + percept[1][1] * percept[2]
+            print(f"Player Coords: {player_x}, {player_y}")
+            direction = self.seek(vec(player_x, player_y))
+            return (direction, speed, ("Don't make me chase you!", 2000))
+        if self.chase:
+            direction = self.seek(self.target)
+        else:
+            direction = self.wander()
+        return (direction, 0, None)
 
 
 class EnemyBlue(Enemy):
