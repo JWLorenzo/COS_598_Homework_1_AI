@@ -85,7 +85,7 @@ def game_loop(display):
     # The enemies.
     enemy1 = gobjs.EnemyYellow(win_w // 2 + 50, win_h // 2, heading=0)
     enemy2 = gobjs.EnemyBlue(win_w // 2 - 50, win_h // 2, heading=math.pi)
-    enemy3 = gobjs.EnemyRed(win_w // 2, win_h // 2 - 50, heading=-math.pi / 2)
+    enemy3 = gobjs.EnemyRed(win_w // 2, win_h // 2 - 50, heading=math.pi / 2)
     enemies = [enemy1, enemy2, enemy3]
     comms = {"R": None, "B": None, "Y": None}
 
