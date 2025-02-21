@@ -1,15 +1,14 @@
 import math
 import random
 import pygame
-import time
 
 vec = pygame.math.Vector2
 WIDTH = 800
 HEIGHT = 800
 
 RED_ENABLED = True
-BLUE_ENABLED = False
-YELLOW_ENABLED = False
+BLUE_ENABLED = True
+YELLOW_ENABLED = True
 
 
 class GObj:
@@ -35,6 +34,8 @@ class GObj:
         self.sight_distance = sight_distance
         self.color = color
         self.fill = fill
+        self.message_active = False
+        self.message_cooldown = 0
 
     def pos(self):
         return (self.x, self.y)
@@ -45,10 +46,6 @@ class GObj:
 
     def turn(self, dt, direction):
         self.heading += direction * self.turn_rate * dt
-        if self.heading > math.pi:
-            self.heading = -math.pi - (self.heading % math.pi)
-        elif self.heading < -math.pi:
-            self.heading = math.pi + (self.heading % math.pi)
 
     def check_collision(self, gameobj):
         distance = math.sqrt((gameobj.x - self.x) ** 2 + (gameobj.y - self.y) ** 2)
@@ -295,10 +292,26 @@ class EnemyYellow(Enemy):
 
     def ai(self, percept, goals, comms):
         if YELLOW_ENABLED:
+            if self.message_active:
+                self.message_cooldown -= 1
+                if self.message_cooldown == 0:
+                    self.message_active = False
+            if not self.message_active:
+                if comms["B"] == "Nyoom!":
+                    self.message_active = True
+                    self.message_cooldown = 120
+                    return (
+                        0,
+                        0,
+                        ("How is that desk chair so fast?", 2000, None),
+                    )
+
             speed = self.orientation_vector()
             if self.ticks > 0:
                 self.ticks -= 1
                 direction = self.seek(self.target)
+                if self.ticks == 0:
+                    comms.update(Y=None)
                 return (direction, speed, None)
             elif self.ticks == 0 and percept[0]:
                 self.ticks = 5
@@ -306,15 +319,24 @@ class EnemyYellow(Enemy):
                 player_y = self.y + percept[1][1] * percept[2]
                 self.target = vec(player_x, player_y)
                 direction = self.seek(self.target)
-                return (direction, speed, ("Don't make me chase you!", 2000))
+                comms.update(Y=self.target)
+                if not self.message_active:
+                    self.message_active = True
+                    self.message_cooldown = 120
+                    return (
+                        direction,
+                        speed,
+                        ("Get em' Blue!", 2000, None),
+                    )
+                else:
+                    return (
+                        direction,
+                        speed,
+                        None,
+                    )
 
             direction = self.wander()
-            next_x = self.x + speed * math.cos(direction) * self.dt
-            next_y = self.y + speed * math.sin(direction) * self.dt
-
-            print("current Direction", direction)
-            print("Current Coordinates: ", self.x, self.y)
-            print("Predictions: ", next_x, next_y)
+            comms.update(Y=None)
             return (direction, speed, None)
         else:
             return (0.0, 0.0, None)
@@ -354,10 +376,17 @@ class EnemyBlue(Enemy):
         self.tick_set = 60
         self.wander_rate = 0.4
         self.sight_distance_original = 180
+        self.last_message = ""
 
     # This is the ai routing for the type B enemy.
     def ai(self, percept, goals, comms):
         if BLUE_ENABLED:
+            if self.message_active:
+                self.message_cooldown -= 1
+                if self.message_cooldown == 0:
+                    self.message_active = False
+                    if comms["B"] == "Nyoom!":
+                        comms.update(B=None)
             speed = self.orientation_vector()
             if self.ticks > 0:
                 self.ticks -= 1
@@ -371,7 +400,6 @@ class EnemyBlue(Enemy):
                     speed * 4.5 * (self.ticks / self.tick_set),
                     None,
                 )
-
             elif (self.ticks == 0) and (percept[0]):
                 self.sight_dec = (
                     self.sight_distance - self.sight_distance_original
@@ -384,12 +412,74 @@ class EnemyBlue(Enemy):
                 player_y = self.y + percept[1][1] * percept[2]
                 self.target = vec(player_x, player_y)
                 direction = self.seek(self.target)
-                return (
-                    direction,
-                    speed * 4.5 * (self.ticks / self.tick_set),
-                    ("I see you!", 2000),
-                )
+                comms.update(B="Nyoom!")
+                if not self.message_active:
+                    self.message_active = True
+                    self.message_cooldown = 120
+                    return (
+                        direction,
+                        speed * 4.5 * (self.ticks / self.tick_set),
+                        ("Nyoom!", 2000),
+                    )
+                else:
+                    return (
+                        direction,
+                        speed * 4.5 * (self.ticks / self.tick_set),
+                        None,
+                    )
+            elif (self.ticks == 0) and comms["Y"] != None:
+                self.sight_dec = (
+                    self.sight_distance - self.sight_distance_original
+                ) / self.tick_set
+
+                self.ticks = self.tick_set
+                # self.dart_ratio_result = self.dist_ratio(self.target)
+
+                self.target = comms["Y"]
+                self.last_message = "Y"
+                direction = self.seek(self.target)
+                if not self.message_active:
+                    self.message_active = True
+                    self.message_cooldown = 120
+                    return (
+                        direction,
+                        speed * 4.5 * (self.ticks / self.tick_set),
+                        ("On it Boss!", 2000),
+                    )
+                else:
+                    return (
+                        direction,
+                        speed * 4.5 * (self.ticks / self.tick_set),
+                        None,
+                    )
+            elif (self.ticks == 0) and comms["R"] != None:
+                self.sight_dec = (
+                    self.sight_distance - self.sight_distance_original
+                ) / self.tick_set
+
+                self.ticks = self.tick_set
+                # self.dart_ratio_result = self.dist_ratio(self.target)
+
+                self.target = comms["R"]
+                self.last_message = "R"
+                direction = self.seek(self.target)
+                if not self.message_active:
+                    self.message_active = True
+                    self.message_cooldown = 120
+                    return (
+                        direction,
+                        speed * 4.5 * (self.ticks / self.tick_set),
+                        ("On my way!", 2000),
+                    )
+                else:
+                    return (
+                        direction,
+                        speed * 4.5 * (self.ticks / self.tick_set),
+                        None,
+                    )
+
             self.sight_distance += 1
+            comms.update(B=None)
             return (self.turn_rate // 3, 0.0, None)
         else:
             return (0.0, 0.0, None)
@@ -425,113 +515,95 @@ class EnemyRed(Enemy):
 
         self.ticks = 0
         self.sub_rand = [1, 2, 3, 4]
-        # self.heading = random.uniform(-math.pi, math.pi)
         self.turn_rate = 90
-        self.speed = 200
-
-    # def random_Vector(self, random_list=[1, 2, 3, 4]):
-    #     self.rand = random.choice(random_list)
-    #     if self.rand == 1:
-    #         self.target = vec(25, random.randint(25, HEIGHT - 25))
-    #     elif self.rand == 2:
-    #         self.target = vec(random.randint(25, WIDTH - 25), 25)
-    #     elif self.rand == 3:
-    #         self.target = vec(WIDTH - 25, random.randint(25, HEIGHT - 25))
-    #     else:
-    #         self.target = vec(random.randint(25, WIDTH - 25), HEIGHT - 25)
-
-    # def seek_wall(self, target: pygame.math.Vector2) -> float:
-    #     self.desired = (target - vec(self.pos())).normalize()
-    #     target_angle = math.atan2(self.desired.y, self.desired.x)
-    #     angle = target_angle - self.heading
-    #     angle = (angle + math.pi) % (2 * math.pi) - math.pi
-
-    #     return angle
-
-    # def wander_Wall(self) -> float:
-    #     if self.rand == 0:
-    #         self.random_Vector()
-    #     else:
-    #         if (
-    #             (self.rand == 1 and self.x < 25)
-    #             or (self.rand == 3 and self.x > WIDTH - 25)
-    #             or (self.rand == 2 and self.y < 25)
-    #             or (self.rand == 4 and self.y > HEIGHT - 25)
-    #         ):
-    #             return self.seek_wall(self.target) + 90
-
-    #     return self.seek_wall(self.target)
-
-    # This is the ai routing for the type B enemy.
-
-    def normalize_direction(self, direction: pygame.math.Vector2) -> float:
-        magnitude = math.sqrt(direction[0] ** 2 + direction[1] ** 2)
-        if magnitude == 0:
-            return direction.magnitude()
-        return vec(direction[0] / magnitude, direction[1] / magnitude).magnitude()
+        self.speed = 400
 
     def ai(self, percept, goals, comms):
-        print("Coordinates", self.x, self.y)
-        print(self.y >= 790)
         speed = self.orientation_vector()
         if RED_ENABLED:
             direction = 0.0
             if self.ticks > 0:
                 self.ticks -= 1
+                direction = self.seek(self.target)
+                if self.ticks == 0:
+                    comms.update(R=None)
+                return (direction, 0, None)
             elif self.ticks == 0 and percept[0]:
                 self.ticks = 30
-                return (0.0, 0.0, ("Enemy!", 2000))
-            if self.ticks == 0:
+                player_x = self.x + percept[1][0] * percept[2]
+                player_y = self.y + percept[1][1] * percept[2]
+                self.target = vec(player_x, player_y)
+                comms.update(R=self.target)
+                return (direction, 0, ("I see them!", 2000, None))
+            elif self.ticks == 0 and not percept[0]:
 
                 Left = self.x <= self.radius
                 Right = self.x >= (WIDTH - self.radius)
                 Top = self.y <= self.radius
                 Bottom = self.y >= (HEIGHT - self.radius)
-
+                heading_checker = self.heading % math.pi
                 if Left or Right or Top or Bottom:
-                    self.ticks = 30
                     if Left:
-                        print("Left")
-                        print(self.heading)
-                        if self.heading <= -math.pi / 2 and self.heading >= -math.pi:
-                            print("Top")
-                            direction = self.heading + 1.75 * math.pi
-                            print("lt", direction)
-                        elif self.heading >= math.pi / 2 and self.heading <= math.pi:
-                            print("Bottom")
-                            direction = self.heading - 1.75 * math.pi
-                            print("lb", direction)
-                    if Right:
-                        print("Right")
-                        print(self.heading)
-                        if self.heading >= -math.pi / 2 and self.heading <= 0:
-                            print("Top")
-                            direction = self.heading + math.pi / 2
-                            print("rt", direction)
-                        elif self.heading <= math.pi / 2 and self.heading >= 0:
-                            print("Bottom")
-                            direction = self.heading - math.pi / 2
-                            print("r", direction)
-                    if Top:
-                        print("Top")
-                        print(self.heading)
-                        if self.heading <= math.pi and self.heading >= math.pi / 2:
-                            print("Right")
-                            direction = self.heading - math.pi / 2
-                        if self.heading <= math.pi / 2 and self.heading >= 0:
-                            print("Left")
-                            direction = self.heading + math.pi / 2
-                    if Bottom:
-                        print("Bottom")
-                        print(self.heading)
-                        if self.heading >= math.pi / 2 and self.heading <= 0:
-                            print("Left")
-                            direction = self.heading - math.pi / 2
-                        if self.heading <= -math.pi / 2 and self.heading >= -math.pi:
-                            print("Right")
-                            direction = self.heading + math.pi / 2
-                    return (direction, speed, None)
+                        if (
+                            heading_checker >= math.pi / 2
+                            and heading_checker <= math.pi
+                        ):
+                            direction = vec(
+                                math.cos(heading_checker) + math.pi / 2,
+                                math.sin(heading_checker),
+                            ).magnitude()
+                        elif heading_checker >= 0 and heading_checker <= math.pi / 2:
+                            direction = -vec(
+                                math.cos(heading_checker) - math.pi / 2,
+                                math.sin(heading_checker),
+                            ).magnitude()
 
+                    elif Right:
+                        if heading_checker <= math.pi / 2 and heading_checker >= 0:
+                            direction = vec(
+                                math.cos(heading_checker),
+                                math.sin(heading_checker) - math.pi / 2,
+                            ).magnitude()
+                        elif (
+                            heading_checker >= math.pi / 2
+                            and heading_checker <= math.pi
+                        ):
+                            direction = vec(
+                                math.cos(heading_checker) + math.pi / 2,
+                                math.sin(heading_checker),
+                            ).magnitude()
+                    elif Top:
+                        if heading_checker <= math.pi / 2 and heading_checker >= 0:
+                            direction = vec(
+                                math.cos(heading_checker),
+                                math.sin(heading_checker) - math.pi / 4,
+                            ).magnitude()
+                        elif (
+                            heading_checker >= math.pi / 2
+                            and heading_checker <= math.pi
+                        ):
+                            direction = -vec(
+                                math.cos(heading_checker) - math.pi / 4,
+                                math.sin(heading_checker),
+                            ).magnitude()
+                    elif Bottom:
+                        if heading_checker <= math.pi / 2 and heading_checker >= 0:
+                            direction = vec(
+                                math.cos(heading_checker),
+                                math.sin(heading_checker) + math.pi / 4,
+                            ).magnitude()
+                        elif (
+                            heading_checker <= math.pi
+                            and heading_checker >= math.pi / 2
+                        ):
+                            direction = vec(
+                                math.cos(heading_checker),
+                                math.sin(heading_checker) - math.pi / 4,
+                            ).magnitude()
+
+                    return (direction % math.pi, speed, None)
+            comms.update(R=None)
             return (0.0, speed, None)
         else:
+            comms.update(R=None)
             return (0.0, 0.0, None)
