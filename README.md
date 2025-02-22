@@ -1,4 +1,4 @@
-# COS_598_Homework_2
+# COS_598_Homework_1
 
 Name: Jacob Lorenzo
 Date: 2/21/25
