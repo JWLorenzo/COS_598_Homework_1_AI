@@ -7,8 +7,8 @@ WIDTH = 800
 HEIGHT = 800
 
 RED_ENABLED = True
-BLUE_ENABLED = True
-YELLOW_ENABLED = True
+BLUE_ENABLED = False
+YELLOW_ENABLED = False
 
 
 class GObj:
@@ -249,6 +249,15 @@ class Enemy(GObj):
 
         return angle
 
+    def update_message_state(self):
+        if self.message_active:
+            self.message_cooldown -= 1
+            if self.message_cooldown <= 0:
+                self.message_active = False
+
+    def current_speed(self, goals) -> float:
+        return self.orientation_vector() * (1 + 0.1 * sum(g.touched for g in goals))
+
 
 class EnemyYellow(Enemy):
     def __init__(
@@ -292,10 +301,7 @@ class EnemyYellow(Enemy):
 
     def ai(self, percept, goals, comms):
         if YELLOW_ENABLED:
-            if self.message_active:
-                self.message_cooldown -= 1
-                if self.message_cooldown == 0:
-                    self.message_active = False
+            self.update_message_state()
             if not self.message_active:
                 if comms["B"] == "Nyoom!":
                     self.message_active = True
@@ -306,7 +312,7 @@ class EnemyYellow(Enemy):
                         ("How is that desk chair so fast?", 2000, None),
                     )
 
-            speed = self.orientation_vector()
+            speed = self.current_speed(goals)
             if self.ticks > 0:
                 self.ticks -= 1
                 direction = self.seek(self.target)
@@ -377,17 +383,15 @@ class EnemyBlue(Enemy):
         self.wander_rate = 0.4
         self.sight_distance_original = 180
         self.last_message = ""
+        self.voiceline = False
 
     # This is the ai routing for the type B enemy.
     def ai(self, percept, goals, comms):
         if BLUE_ENABLED:
-            if self.message_active:
-                self.message_cooldown -= 1
-                if self.message_cooldown == 0:
-                    self.message_active = False
-                    if comms["B"] == "Nyoom!":
-                        comms.update(B=None)
-            speed = self.orientation_vector()
+            self.update_message_state()
+            if comms["B"] == "Nyoom!":
+                comms.update(B=None)
+            speed = self.current_speed(goals)
             if self.ticks > 0:
                 self.ticks -= 1
                 if self.sight_distance > self.sight_distance_original:
@@ -406,7 +410,6 @@ class EnemyBlue(Enemy):
                 ) / self.tick_set
 
                 self.ticks = self.tick_set
-                # self.dart_ratio_result = self.dist_ratio(self.target)
 
                 player_x = self.x + percept[1][0] * percept[2]
                 player_y = self.y + percept[1][1] * percept[2]
@@ -478,9 +481,14 @@ class EnemyBlue(Enemy):
                         None,
                     )
 
-            self.sight_distance += 1
+            self.sight_distance += sum([x.touched for x in goals])
+
             comms.update(B=None)
-            return (self.turn_rate // 3, 0.0, None)
+            return (
+                0.5,
+                0.0,
+                None,
+            )
         else:
             return (0.0, 0.0, None)
 
@@ -491,8 +499,8 @@ class EnemyRed(Enemy):
         x,
         y,
         radius=10,
-        speed=90,
-        turn_rate=3.0,
+        speed=400,
+        turn_rate=90,
         heading=0.0,
         sight_distance=120,
         color="red",
@@ -514,12 +522,17 @@ class EnemyRed(Enemy):
         )
 
         self.ticks = 0
-        self.sub_rand = [1, 2, 3, 4]
-        self.turn_rate = 90
-        self.speed = 400
+
+    def check_screen_edges(self) -> dict:
+        return {
+            "left": self.x <= self.radius,
+            "right": self.x >= WIDTH - self.radius,
+            "top": self.y <= self.radius,
+            "bottom": self.y >= HEIGHT - self.radius,
+        }
 
     def ai(self, percept, goals, comms):
-        speed = self.orientation_vector()
+        speed = self.current_speed(goals)
         if RED_ENABLED:
             direction = 0.0
             if self.ticks > 0:
@@ -536,72 +549,54 @@ class EnemyRed(Enemy):
                 comms.update(R=self.target)
                 return (direction, 0, ("I see them!", 2000, None))
             elif self.ticks == 0 and not percept[0]:
-
-                Left = self.x <= self.radius
-                Right = self.x >= (WIDTH - self.radius)
-                Top = self.y <= self.radius
-                Bottom = self.y >= (HEIGHT - self.radius)
+                screen_edge = self.check_screen_edges()
                 heading_checker = self.heading % math.pi
-                if Left or Right or Top or Bottom:
-                    if Left:
-                        if (
-                            heading_checker >= math.pi / 2
-                            and heading_checker <= math.pi
-                        ):
-                            direction = vec(
-                                math.cos(heading_checker) + math.pi / 2,
-                                math.sin(heading_checker),
-                            ).magnitude()
-                        elif heading_checker >= 0 and heading_checker <= math.pi / 2:
-                            direction = -vec(
-                                math.cos(heading_checker) - math.pi / 2,
-                                math.sin(heading_checker),
-                            ).magnitude()
+                if screen_edge["left"]:
+                    if heading_checker >= math.pi / 2 and heading_checker <= math.pi:
+                        direction = vec(
+                            math.cos(heading_checker) + math.pi / 2,
+                            math.sin(heading_checker),
+                        ).magnitude()
+                    elif heading_checker >= 0 and heading_checker <= math.pi / 2:
+                        direction = vec(
+                            math.cos(heading_checker) - math.pi / 2,
+                            math.sin(heading_checker),
+                        ).magnitude()
+                elif screen_edge["right"]:
+                    if heading_checker <= math.pi / 2 and heading_checker >= 0:
+                        direction = vec(
+                            math.cos(heading_checker),
+                            math.sin(heading_checker) - math.pi / 2,
+                        ).magnitude()
+                    elif heading_checker >= math.pi / 2 and heading_checker <= math.pi:
+                        direction = vec(
+                            math.cos(heading_checker) + math.pi / 2,
+                            math.sin(heading_checker),
+                        ).magnitude()
+                elif screen_edge["top"]:
+                    if heading_checker <= math.pi / 2 and heading_checker >= 0:
+                        direction = vec(
+                            math.cos(heading_checker),
+                            math.sin(heading_checker) - math.pi / 4,
+                        ).magnitude()
+                    elif heading_checker >= math.pi / 2 and heading_checker <= math.pi:
+                        direction = -vec(
+                            math.cos(heading_checker) - math.pi / 4,
+                            math.sin(heading_checker),
+                        ).magnitude()
+                elif screen_edge["bottom"]:
+                    if heading_checker <= math.pi / 2 and heading_checker >= 0:
+                        direction = vec(
+                            math.cos(heading_checker),
+                            math.sin(heading_checker) + math.pi / 4,
+                        ).magnitude()
+                    elif heading_checker <= math.pi and heading_checker >= math.pi / 2:
+                        direction = vec(
+                            math.cos(heading_checker),
+                            math.sin(heading_checker) - math.pi / 4,
+                        ).magnitude()
 
-                    elif Right:
-                        if heading_checker <= math.pi / 2 and heading_checker >= 0:
-                            direction = vec(
-                                math.cos(heading_checker),
-                                math.sin(heading_checker) - math.pi / 2,
-                            ).magnitude()
-                        elif (
-                            heading_checker >= math.pi / 2
-                            and heading_checker <= math.pi
-                        ):
-                            direction = vec(
-                                math.cos(heading_checker) + math.pi / 2,
-                                math.sin(heading_checker),
-                            ).magnitude()
-                    elif Top:
-                        if heading_checker <= math.pi / 2 and heading_checker >= 0:
-                            direction = vec(
-                                math.cos(heading_checker),
-                                math.sin(heading_checker) - math.pi / 4,
-                            ).magnitude()
-                        elif (
-                            heading_checker >= math.pi / 2
-                            and heading_checker <= math.pi
-                        ):
-                            direction = -vec(
-                                math.cos(heading_checker) - math.pi / 4,
-                                math.sin(heading_checker),
-                            ).magnitude()
-                    elif Bottom:
-                        if heading_checker <= math.pi / 2 and heading_checker >= 0:
-                            direction = vec(
-                                math.cos(heading_checker),
-                                math.sin(heading_checker) + math.pi / 4,
-                            ).magnitude()
-                        elif (
-                            heading_checker <= math.pi
-                            and heading_checker >= math.pi / 2
-                        ):
-                            direction = vec(
-                                math.cos(heading_checker),
-                                math.sin(heading_checker) - math.pi / 4,
-                            ).magnitude()
-
-                    return (direction % math.pi, speed, None)
+                return (direction % math.pi, speed, None)
             comms.update(R=None)
             return (0.0, speed, None)
         else:
