@@ -7,8 +7,8 @@ WIDTH = 800
 HEIGHT = 800
 
 RED_ENABLED = True
-BLUE_ENABLED = False
-YELLOW_ENABLED = False
+BLUE_ENABLED = True
+YELLOW_ENABLED = True
 
 
 class GObj:
@@ -150,7 +150,7 @@ class Enemy(GObj):
         self.last_target = 0
         self.wander_rate = 0.3
         self.sight_angle = math.pi / 6
-        self.target = vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+        self.target = vec(random.randint(25, WIDTH), random.randint(25, HEIGHT))
 
         x0 = self.x
         y0 = self.y
@@ -240,8 +240,8 @@ class Enemy(GObj):
         return (0.0, 0.0, None)
 
     def seek(self, target: pygame.math.Vector2) -> float:
-        self.desired = (target - vec(self.pos())).normalize()
-        target_angle = math.atan2(self.desired.y, self.desired.x)
+        desired = (target - vec(self.pos())).normalize()
+        target_angle = math.atan2(desired.y, desired.x)
         angle = target_angle - self.heading
         angle = (angle + math.pi) % (2 * math.pi) - math.pi
         if abs(angle) > self.wander_rate:
@@ -249,7 +249,7 @@ class Enemy(GObj):
 
         return angle
 
-    def update_message_state(self):
+    def update_message_state(self) -> None:
         if self.message_active:
             self.message_cooldown -= 1
             if self.message_cooldown <= 0:
@@ -265,7 +265,7 @@ class EnemyYellow(Enemy):
         x,
         y,
         radius=10,
-        speed=90,
+        speed=120,
         turn_rate=5.0,
         heading=0.0,
         sight_distance=120,
@@ -378,12 +378,9 @@ class EnemyBlue(Enemy):
 
         self.ticks = 0
         self.sight_angle = math.pi / 32
-        self.cooldown = 0
         self.tick_set = 60
         self.wander_rate = 0.4
         self.sight_distance_original = 180
-        self.last_message = ""
-        self.voiceline = False
 
     # This is the ai routing for the type B enemy.
     def ai(self, percept, goals, comms):
@@ -408,9 +405,7 @@ class EnemyBlue(Enemy):
                 self.sight_dec = (
                     self.sight_distance - self.sight_distance_original
                 ) / self.tick_set
-
                 self.ticks = self.tick_set
-
                 player_x = self.x + percept[1][0] * percept[2]
                 player_y = self.y + percept[1][1] * percept[2]
                 self.target = vec(player_x, player_y)
@@ -436,10 +431,7 @@ class EnemyBlue(Enemy):
                 ) / self.tick_set
 
                 self.ticks = self.tick_set
-                # self.dart_ratio_result = self.dist_ratio(self.target)
-
                 self.target = comms["Y"]
-                self.last_message = "Y"
                 direction = self.seek(self.target)
                 if not self.message_active:
                     self.message_active = True
@@ -461,10 +453,7 @@ class EnemyBlue(Enemy):
                 ) / self.tick_set
 
                 self.ticks = self.tick_set
-                # self.dart_ratio_result = self.dist_ratio(self.target)
-
                 self.target = comms["R"]
-                self.last_message = "R"
                 direction = self.seek(self.target)
                 if not self.message_active:
                     self.message_active = True
@@ -522,6 +511,7 @@ class EnemyRed(Enemy):
         )
 
         self.ticks = 0
+        self.last_bounce = ""
 
     def check_screen_edges(self) -> dict:
         return {
@@ -551,51 +541,35 @@ class EnemyRed(Enemy):
             elif self.ticks == 0 and not percept[0]:
                 screen_edge = self.check_screen_edges()
                 heading_checker = self.heading % math.pi
-                if screen_edge["left"]:
+                noise = random.uniform(-0.1, 0.1)
+                if screen_edge["left"] and self.last_bounce != "left":
+                    self.last_bounce = "left"
                     if heading_checker >= math.pi / 2 and heading_checker <= math.pi:
-                        direction = vec(
-                            math.cos(heading_checker) + math.pi / 2,
-                            math.sin(heading_checker),
-                        ).magnitude()
+                        direction = math.pi + self.heading
                     elif heading_checker >= 0 and heading_checker <= math.pi / 2:
-                        direction = vec(
-                            math.cos(heading_checker) - math.pi / 2,
-                            math.sin(heading_checker),
-                        ).magnitude()
-                elif screen_edge["right"]:
+                        direction = math.pi / 2 - self.heading
+                    direction += noise
+                if screen_edge["right"] and self.last_bounce != "right":  #
+                    self.last_bounce = "right"
                     if heading_checker <= math.pi / 2 and heading_checker >= 0:
-                        direction = vec(
-                            math.cos(heading_checker),
-                            math.sin(heading_checker) - math.pi / 2,
-                        ).magnitude()
+                        direction = math.pi / 2 - self.heading
                     elif heading_checker >= math.pi / 2 and heading_checker <= math.pi:
-                        direction = vec(
-                            math.cos(heading_checker) + math.pi / 2,
-                            math.sin(heading_checker),
-                        ).magnitude()
-                elif screen_edge["top"]:
+                        direction = math.pi + self.heading
+                    direction += noise
+                if screen_edge["top"] and self.last_bounce != "top":
+                    self.last_bounce = "top"
                     if heading_checker <= math.pi / 2 and heading_checker >= 0:
-                        direction = vec(
-                            math.cos(heading_checker),
-                            math.sin(heading_checker) - math.pi / 4,
-                        ).magnitude()
+                        direction = math.pi / 2 + self.heading
                     elif heading_checker >= math.pi / 2 and heading_checker <= math.pi:
-                        direction = -vec(
-                            math.cos(heading_checker) - math.pi / 4,
-                            math.sin(heading_checker),
-                        ).magnitude()
-                elif screen_edge["bottom"]:
+                        direction = math.pi - self.heading
+                    direction += noise
+                if screen_edge["bottom"] and self.last_bounce != "bottom":
+                    self.last_bounce = "bottom"
                     if heading_checker <= math.pi / 2 and heading_checker >= 0:
-                        direction = vec(
-                            math.cos(heading_checker),
-                            math.sin(heading_checker) + math.pi / 4,
-                        ).magnitude()
+                        direction = math.pi / 2 + self.heading
                     elif heading_checker <= math.pi and heading_checker >= math.pi / 2:
-                        direction = vec(
-                            math.cos(heading_checker),
-                            math.sin(heading_checker) - math.pi / 4,
-                        ).magnitude()
-
+                        direction = math.pi - self.heading
+                    direction += noise
                 return (direction % math.pi, speed, None)
             comms.update(R=None)
             return (0.0, speed, None)
