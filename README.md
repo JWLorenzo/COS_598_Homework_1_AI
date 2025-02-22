@@ -1,9 +1,9 @@
 # COS_598_Homework_1
 
-Name: Jacob Lorenzo
-Date: 2/21/25
-Instructor: Dr. Hutchinson
-Assignment: Homework 1
+- Name: Jacob Lorenzo
+- Date: 2/21/25
+- Instructor: Dr. Hutchinson
+- Assignment: Homework 1
 
 # Disclaimer:
 
